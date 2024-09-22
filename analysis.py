@@ -9,7 +9,7 @@ import xgboost as xgb
 import optuna
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from optuna.storages import RDBStorage
+
 
 # Load the dataset with low_memory=False to avoid dtype warnings
 df = pd.read_csv('data/Dataset.csv', low_memory=False)
@@ -35,6 +35,41 @@ df = pd.get_dummies(df, columns=categorical_columns, drop_first=True)
 # Drop columns that are completely NaN or have insufficient non-missing values for imputation
 columns_to_drop = ['Client_Occupation', 'Client_Permanent_Match_Tag', 'Client_Contact_Work_Tag']
 df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
+
+# Data Visualization: Distribution of Loan Default
+plt.figure(figsize=(8, 6))
+sns.countplot(x='Default', data=df)
+plt.title('Distribution of Loan Default (1 = Default, 0 = No Default)')
+plt.xlabel('Default')
+plt.ylabel('Count')
+plt.savefig('graphs/loan_default_distribution.png')  # Save the plot
+
+# Advanced Analysis: Distribution of key features
+features_to_plot = [
+    'Car_Owned', 'Bike_Owned', 'Active_Loan', 'House_Own', 
+    'Child_Count', 'Own_House_Age', 'Mobile_Tag', 
+    'Homephone_Tag', 'Workphone_Working', 'Credit_Bureau'
+]
+
+plt.figure(figsize=(20, 15))
+for i, feature in enumerate(features_to_plot):
+    plt.subplot(4, 3, i + 1)
+    sns.histplot(df[feature], bins=30, kde=True)
+    plt.title(f'Distribution of {feature}')
+    plt.savefig(f'graphs/distribution_of_{feature}.png')  # Save each plot individually
+
+plt.tight_layout()
+plt.show()
+
+# Correlation Analysis
+correlation_matrix = df.corr()
+plt.figure(figsize=(12, 10))
+sns.heatmap(correlation_matrix, annot=False, fmt=".2f", cmap='coolwarm')
+plt.title('Correlation Heatmap')
+plt.savefig('graphs/correlation_heatmap.png')  # Save the plot
+
+plt.show()
+
 
 # Create a pipeline for preprocessing with an imputer for numeric columns
 numeric_transformer = SimpleImputer(strategy='median')
@@ -79,7 +114,7 @@ def objective(trial):
     return classification_report(y_test, preds, output_dict=True)['1']['f1-score']
 
 # Run Optuna optimization
-study.optimize(objective, n_trials=5)
+study.optimize(objective, n_trials=1)
 
 # Train the final model with best parameters
 best_params = study.best_params
@@ -88,16 +123,46 @@ model.fit(X_train, y_train)
 
 # Predictions and Evaluation
 y_pred = model.predict(X_test)
-print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-print("\nClassification Report:\n", classification_report(y_test, y_pred))
+# Model Evaluation: Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted Label')
+plt.ylabel('True Label')
+plt.savefig('graphs/confusion_matrix.png')  # Save the confusion matrix as a graph
 
-# # Feature Importance Visualization
-# importance = model.feature_importances_
-# features = X.columns
+plt.show()
 
-# plt.figure(figsize=(10, 6))
-# sns.barplot(x=importance, y=features)
-# plt.title('Feature Importance')
-# plt.xlabel('Importance Score')
-# plt.ylabel('Features')
-# plt.show()
+
+# Model Evaluation: Classification Report
+report = classification_report(y_test, y_pred, output_dict=True)
+print("\nClassification Report:\n", report)
+
+# Create a heatmap of the classification report
+plt.imshow([[report['accuracy'], report['macro avg']['f1-score']], 
+            [report['weighted avg']['precision'], report['weighted avg']['recall']]], 
+           cmap='Blues', interpolation='nearest')
+plt.title('Classification Report')
+plt.xlabel('Metrics')
+plt.ylabel('Average')
+plt.xticks([0, 1], ['Accuracy', 'Macro F1'])
+plt.yticks([0, 1], ['Weighted Precision', 'Weighted Recall'])
+plt.colorbar()
+plt.savefig('graphs/classification_report.png')  # Save the classification report as a graph
+
+plt.show()
+
+# Get feature importances
+feature_importances = model.feature_importances_
+
+# Sort features by importance in descending order
+sorted_importances = sorted(zip(X.columns, feature_importances), key=lambda x: x[1], reverse=True)
+
+# Plot feature importances
+plt.bar([x[0] for x in sorted_importances], [x[1] for x in sorted_importances])
+plt.xlabel('Feature')
+plt.ylabel('Importance')
+plt.title('Feature Importances')
+plt.xticks(rotation=90)  # Rotate x-axis labels for better readability
+plt.tight_layout()
+plt.savefig('graphs/feature_importance.png')
